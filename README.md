@@ -21,7 +21,7 @@ flask run --host=0.0.0.0 --port=5000
 ```
 
 ## Make the Project Installable
-```setup.py`` and ```MANIFEST.in``` describes how to install the project
+```setup.py``` and ```MANIFEST.in``` describes how to install the project
 
 ## Install the Project (in editable or development mode)
 ```
