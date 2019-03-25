@@ -1,4 +1,5 @@
 import functools
+import ldap
 
 from flask import (
     Blueprint, flash, g, redirect, render_template, request, session, url_for
@@ -62,6 +63,66 @@ def login():
         flash(error)
 
     return render_template('auth/login.html')
+
+
+def ad_authenticate(address, username, password):
+    conn = ldap.initialize('ldap://' + address)
+    conn.protocol_version = 3
+    conn.set_option(ldap.OPT_REFERRALS, 0)
+
+    try:
+        result = conn.simple_bind_s(username, password)
+    except ldap.INVALID_CREDENTIALS:
+        return False, "Invalid credentials"
+    except ldap.SERVER_DOWN:
+        return False, "Server down"
+    except ldap.LDAPError as e:
+        if isinstance(e.message, dict) and e.message.has_key('desc'):
+            return False, "Other LDAP error: " + e.message['desc']
+        else: 
+            return False, "Other LDAP error: " + e
+    finally:
+        conn.unbind_s()
+
+    return True, "Succesfully authenticated"
+
+
+@bp.route('/ad-login', methods=('GET', 'POST'))
+def ad_login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        AD_SERVER = '192.168.100.110'
+        authenticated, error = ad_authenticate(AD_SERVER, username, password)
+
+        if authenticated:
+            # Check user registered or not
+            db = get_db()
+            user = db.execute(
+                'SELECT * FROM user WHERE username = ?', (username,)
+            ).fetchone()
+
+            if user is None:
+                # User not registered; help user register
+                db.execute(
+                    'INSERT INTO user (username, password) VALUES (?, ?)',
+                    (username, generate_password_hash(password))
+                )
+                db.commit()
+
+                user = db.execute(
+                    'SELECT * FROM user WHERE username = ?', (username,)
+                ).fetchone()
+
+            session.clear()
+            session['user_id'] = user['id']
+
+            return redirect(url_for('index'))
+            
+        flash(error)
+
+    return render_template('auth/login.html')
+
 
 @bp.before_app_request
 def load_logged_in_user():
